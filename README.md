@@ -588,5 +588,6 @@ liveness 체크를 위해 변경한뒤 Pod 이 재시작 되는 것을 체크한
 ```
 
 ```
+NAME                       READY   STATUS    RESTARTS   AGE
 place-59b8755b55-28wmr     1/2     Running   1          47s
 ```
