@@ -472,161 +472,91 @@ place   Deployment/place   1%/20%    1         10        1          9h
 - CB 에서 했던 방식대로 워크로드를 2분 동안 걸어준다.
 ```
 # 부하가 발생하도록 place 서비스의 cpu request 값을 낮춰서 재생성한다. 
+# 부하가 발생하도록 place 서비스의 circuit breaker 에서 connection pool 에 따른 제약조건을 없앤다.
 
-siege -c100 -t120S -r10 --content-type "application/json" 'http://localhost:8081/orders POST {"item": "chicken"}'
+siege -c250 -t50S -v --content-type "application/json" 'http://gateway:8080/places/1 PATCH {"vehiNo":"111111111111","stat":"RECEIPTED","receiptId":"1"}'
 ```
 - 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다:
-```
-kubectl get deploy pay -w
-```
+
 - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다:
 ```
-NAME    DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
-pay     1         1         1            1           17s
-pay     1         2         1            1           45s
-pay     1         4         1            1           1m
+❯ k -n car get pod
+NAME                       READY   STATUS    RESTARTS   AGE
+gateway-5f98595bc8-x6629   2/2     Running   0          3h37m
+place-9d5578bbf-2cmr9      1/2     Running   0          68s
+place-9d5578bbf-bqmsm      2/2     Running   0          68m
+place-9d5578bbf-dsb2j      1/2     Running   0          68s
+place-9d5578bbf-wfsqn      1/2     Running   0          68s
+repair-694f75b799-vfzr6    2/2     Running   0          3h37m
+siege-5c7c46b788-2x4q6     2/2     Running   0          98m
 :
-```
-- siege 의 로그를 보아도 전체적인 성공률이 높아진 것을 확인 할 수 있다. 
-```
-Transactions:		        5078 hits
-Availability:		       92.45 %
-Elapsed time:		       120 secs
-Data transferred:	        0.34 MB
-Response time:		        5.60 secs
-Transaction rate:	       17.15 trans/sec
-Throughput:		        0.01 MB/sec
-Concurrency:		       96.02
 ```
 
 
 ## 무정지 재배포
 
 * 먼저 무정지 재배포가 100% 되는 것인지 확인하기 위해서 Autoscaler 이나 CB 설정을 제거함
-
+```
+        readinessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /places
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+```
 - seige 로 배포작업 직전에 워크로드를 모니터링 함.
 ```
-siege -c100 -t120S -r10 --content-type "application/json" 'http://localhost:8081/orders POST {"item": "chicken"}'
+$ siege -c2 -t2S -v --content-type "application/json" 'http://gateway:8080/places'
+...
 
-** SIEGE 4.0.5
-** Preparing 100 concurrent users for battle.
-The server is now under siege...
-
-HTTP/1.1 201     0.68 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.68 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.70 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.70 secs:     207 bytes ==> POST http://localhost:8081/orders
-:
-
-```
-
-- 새버전으로의 배포 시작
-```
-kubectl set image ...
-```
-
-- seige 의 화면으로 넘어가서 Availability 가 100% 미만으로 떨어졌는지 확인
-```
-Transactions:		        3078 hits
-Availability:		       70.45 %
-Elapsed time:		       120 secs
-Data transferred:	        0.34 MB
-Response time:		        5.60 secs
-Transaction rate:	       17.15 trans/sec
-Throughput:		        0.01 MB/sec
-Concurrency:		       96.02
+Lifting the server siege...
+Transactions:		          36 hits
+Availability:		      100.00 %
+Elapsed time:		        1.21 secs
+Data transferred:	        0.03 MB
+Response time:		        0.06 secs
+Transaction rate:	       29.75 trans/sec
+Throughput:		        0.03 MB/sec
+Concurrency:		        1.93
+Successful transactions:          36
+Failed transactions:	           0
+Longest transaction:	        0.30
+Shortest transaction:	        0.01
 
 ```
-배포기간중 Availability 가 평소 100%에서 70% 대로 떨어지는 것을 확인. 원인은 쿠버네티스가 성급하게 새로 올려진 서비스를 READY 상태로 인식하여 서비스 유입을 진행한 것이기 때문. 이를 막기위해 Readiness Probe 를 설정함:
 
+- 새로 배포 시작
 ```
-# deployment.yaml 의 readiness probe 의 설정:
-
-
-kubectl apply -f kubernetes/deployment.yaml
+kubectl edit deploy place
 ```
 
-- 동일한 시나리오로 재배포 한 후 Availability 확인:
 ```
-Transactions:		        3078 hits
-Availability:		       100 %
-Elapsed time:		       120 secs
-Data transferred:	        0.34 MB
-Response time:		        5.60 secs
-Transaction rate:	       17.15 trans/sec
-Throughput:		        0.01 MB/sec
-Concurrency:		       96.02
+$ siege -c2 -t2S -v --content-type "application/json" 'http://gateway:8080/places'
+
+...
+HTTP/1.1 200     0.03 secs:     950 bytes ==> GET  /places
+HTTP/1.1 200     0.27 secs:     950 bytes ==> GET  /places
+
+Lifting the server siege...
+Transactions:		          29 hits
+Availability:		      100.00 %
+Elapsed time:		        1.70 secs
+Data transferred:	        0.03 MB
+Response time:		        0.10 secs
+Transaction rate:	       17.06 trans/sec
+Throughput:		        0.02 MB/sec
+Concurrency:		        1.72
+Successful transactions:          29
+Failed transactions:	           0
+Longest transaction:	        0.28
+Shortest transaction:	        0.02
 
 ```
 
 배포기간 동안 Availability 가 변화없기 때문에 무정지 재배포가 성공한 것으로 확인됨.
 
-
-# 신규 개발 조직의 추가
-
-  ![image](https://user-images.githubusercontent.com/487999/79684133-1d6c4300-826a-11ea-94a2-602e61814ebf.png)
-
-
-## 마케팅팀의 추가
-    - KPI: 신규 고객의 유입률 증대와 기존 고객의 충성도 향상
-    - 구현계획 마이크로 서비스: 기존 customer 마이크로 서비스를 인수하며, 고객에 음식 및 맛집 추천 서비스 등을 제공할 예정
-
-## 이벤트 스토밍 
-    ![image](https://user-images.githubusercontent.com/487999/79685356-2b729180-8273-11ea-9361-a434065f2249.png)
-
-
-## 헥사고날 아키텍처 변화 
-
-![image](https://user-images.githubusercontent.com/487999/79685243-1d704100-8272-11ea-8ef6-f4869c509996.png)
-
-## 구현  
-
-기존의 마이크로 서비스에 수정을 발생시키지 않도록 Inbund 요청을 REST 가 아닌 Event 를 Subscribe 하는 방식으로 구현. 기존 마이크로 서비스에 대하여 아키텍처나 기존 마이크로 서비스들의 데이터베이스 구조와 관계없이 추가됨. 
-
-## 운영과 Retirement
-
-Request/Response 방식으로 구현하지 않았기 때문에 서비스가 더이상 불필요해져도 Deployment 에서 제거되면 기존 마이크로 서비스에 어떤 영향도 주지 않음.
-
-* [비교] 결제 (pay) 마이크로서비스의 경우 API 변화나 Retire 시에 app(주문) 마이크로 서비스의 변경을 초래함:
-
-예) API 변화시
-```
-# Order.java (Entity)
-
-    @PostPersist
-    public void onPostPersist(){
-
-        fooddelivery.external.결제이력 pay = new fooddelivery.external.결제이력();
-        pay.setOrderId(getOrderId());
-        
-        Application.applicationContext.getBean(fooddelivery.external.결제이력Service.class)
-                .결제(pay);
-
-                --> 
-
-        Application.applicationContext.getBean(fooddelivery.external.결제이력Service.class)
-                .결제2(pay);
-
-    }
-```
-
-예) Retire 시
-```
-# Order.java (Entity)
-
-    @PostPersist
-    public void onPostPersist(){
-
-        /**
-        fooddelivery.external.결제이력 pay = new fooddelivery.external.결제이력();
-        pay.setOrderId(getOrderId());
-        
-        Application.applicationContext.getBean(fooddelivery.external.결제이력Service.class)
-                .결제(pay);
-
-        **/
-    }
-```
-
-![image](https://user-images.githubusercontent.com/35618409/97124656-49660500-1774-11eb-8b01-49e6c3096544.png)
 
