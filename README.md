@@ -44,6 +44,8 @@
 ## Event Storming 결과
 * MSAEz 로 모델링한 이벤트스토밍 결과:  http://www.msaez.io/#/storming/9D9vu5mgxNhZwInvqXjioqXtoTF3/mine/94f63ceddc78dbc8e3edd3675d480881/-MLNyEWMJzNsbEf6qodl
 
+![image](https://user-images.githubusercontent.com/20468807/98329618-fb86b200-203b-11eb-9b3c-fc63a2348090.png)
+
 
 ## 헥사고날 아키텍처 다이어그램 도출
     
