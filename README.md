@@ -560,3 +560,33 @@ Shortest transaction:	        0.02
 배포기간 동안 Availability 가 변화없기 때문에 무정지 재배포가 성공한 것으로 확인됨.
 
 
+## Liveness
+```
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - echo Hello Kubernetes! > /tmp/healthy && cat /tmp/healthy
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+```
+liveness 체크를 위해 변경한뒤 Pod 이 재시작 되는 것을 체크한다. 
+```
+        livenessProbe:
+          exec:
+            command:
+            - sh
+            - -c
+            - cat /tmp/healthy
+          failureThreshold: 3
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+```
+
+```
+place-59b8755b55-28wmr     1/2     Running   1          47s
+```
